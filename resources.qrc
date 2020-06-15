@@ -11,5 +11,6 @@
 		<file>img/sachs.png</file>
 		<file>img/valeo.png</file>
 		<file>img/logo.png</file>
+		<file>img/wheel.ico</file>
 	</qresource>
 </RCC>

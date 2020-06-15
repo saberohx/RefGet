@@ -1,3 +1,4 @@
+#! python 3.8 - Get data from http://web2.carparts-cat.com/default.aspx?11=426
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -6,6 +7,8 @@ from bs4 import BeautifulSoup as soup
 import xlsxwriter
 import time
 from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from  PyQt5.QtGui import *
 import sys
 from PyQt5.uic import loadUiType
 import resources_rc
@@ -14,9 +17,12 @@ import os
 import subprocess
 import threading
 from requests import get
+import re
+
 MainUi,_=loadUiType('MyDesign.ui')
 
 class Main(QWidget,MainUi):
+
     def __init__(self,parent=None):
         super(Main,self).__init__(parent)
         QWidget.__init__(self)
@@ -29,13 +35,11 @@ class Main(QWidget,MainUi):
         self.but_settings.clicked.connect(lambda:self.changeTab_home(1))
         self.but_import.clicked.connect(self.import_file)
         self.but_browse.clicked.connect(self.output_file)
+        self.groupBox_2.hide()
         #self.but_about.clicked.connect(lambda:self.open_file("C:/Users/hp/Desktop/llllllllll.xlsx"))
-    #--------------------- Changing the tab --------------------------------------#
+
     def changeTab_home(self,index):
         self.tab_2.setCurrentIndex(index)
-
-
-    #-------------------------- Import xlsx -------------------------------
     def import_file(self):
         try:
             global path_import
@@ -49,11 +53,10 @@ class Main(QWidget,MainUi):
             file_size=int(df.count())
 
             self.show_ref(str(file_size) + " References will be processed !")
+            self.groupBox_2.hide()
         except Exception as exc:
             #print(exc)
-            self.txt_warnings.setText(exc)
-
-    #------------------------ Output Directory -------------------------------#
+            self.txt_warnings.setText(str(exc))
     def output_file(self):
         try:
             path = QFileDialog.getExistingDirectory(
@@ -63,12 +66,12 @@ class Main(QWidget,MainUi):
             #print(path)
 
             self.txt_folder.setText(path)
-
+            fname=self.txt_name.text()
+            print(fname)
+            self.run(fname)
         except Exception as exc:
             #print(exc)
-            self.txt_warnings.setText(exc)
-    #------------------ MsgBox --------------------------------------------#
-
+            self.txt_warnings.setText(str(exc))
     def check_supp(self):
         global supObj
         supObj = []
@@ -80,14 +83,15 @@ class Main(QWidget,MainUi):
             supObj.append("AISIN")
         if self.check_luk.isChecked():
             supObj.append("LUK")
-
-    #------------------ The Main Operation ------------#
     def create_xslx(self):
+
         path_file=self.txt_folder.text()
         file_name=self.txt_name.text()
+        if file_name=="":
+            file_name="Test"
+            self.txt_name.setText(file_name)
         global directory
         directory=path_file+"/"+file_name+".xlsx"
-
 
         global ws_luk,ws_warn,ws_sashs,ws_valeo,ws_aisin,wb
 
@@ -99,18 +103,33 @@ class Main(QWidget,MainUi):
         ws_warn = wb.add_worksheet("WARNINGS")
         #print("xlsx file Done !")
         self.show_ref("Excel file Done !")
+
+    def run(self,string):
+
+        # Make own character set and pass
+        # this as argument in compile method
+        regex = re.compile('[*<>?/\|*":]')
+        #\ / : * ? " < > |
+
+        # Pass the string in search
+        # method of regex object.
+        if (regex.search(string) == None):
+            #print("String is accepted")
+            pass
+        else:
+            self.show_ref("A filename cannot contain any of the following characters: \ / : * ? \" < > |")
     def progress_check(self,processed):
         percent = 100 * processed / file_size
         self.progressBar.setValue(int(percent))
     def get(self):
-
         preurl = "http://web2.carparts-cat.com/default.aspx?11=426"
-        chromedriver = r"C:\Users\hp\Documents\Software\chromedriver_win32\chromedriver.exe"
+        chromedriver = r"chromedriver_win32\chromedriver.exe"
         # firefoxdriver=r"C:\Users\hp\Documents\Software\firfoxdriver\geckodriver.exe"
         options = webdriver.ChromeOptions()
         options.add_argument('--ignore-certificate-errors')
         options.add_argument('--incognito')
         options.add_argument('--headless')
+        global browser
         browser = webdriver.Chrome(chromedriver, options=options)
         #print('Opening Browser ...')
         self.show_ref('Opening Browser ...')
@@ -122,7 +141,7 @@ class Main(QWidget,MainUi):
             req.raise_for_status()
         except Exception as exc:
             self.show_ref('Please check your connection !')
-            print('Please check your connection ! %s'%exc)
+            #print('Please check your connection ! %s'%exc)
         #self.label.setText(preurl)
         browser.get(preurl)
         try:
@@ -144,6 +163,7 @@ class Main(QWidget,MainUi):
             global processed
             processed=0
             for index, row in df.iterrows():
+                self.groupBox_2.show()
                 ref=str(row['Références'])
                 col=1
                 #print("La référence : ",ref)
@@ -199,11 +219,13 @@ class Main(QWidget,MainUi):
                             #print(name,"Not exist")
                             pass
                 except Exception as exc:
-                    print(exc,ref)
+                    #print(exc,ref)
+                    self.show_ref("Something wrong in",ref)
                     ws_warn.write(row_, 0, ref)
                     ws_warn.write(row_, col, "ERROR")
                     row_ += 1
                     col += 1
+                    processed+=1
                     continue
 
                 #-------------- OUTPUTS ------------------------------------
@@ -263,7 +285,7 @@ class Main(QWidget,MainUi):
                 processed += 1
                 self.progress_check(processed)
             browser.close()
-            wb.close()
+
             #print("SAVED")
 
             #self.finished()
@@ -273,10 +295,10 @@ class Main(QWidget,MainUi):
             self.thread_excel(directory)
 
         except Exception as exc:
-            self.txt_warnings.setText(exc)
             browser.close()
+            self.thread_excel(directory)
+            self.txt_warnings.setText(str(exc))
         #wb.close()
-
     def exec(self):
         try :
             f1=threading.Thread(target=self.create_xslx,args=(),daemon=True)
@@ -286,7 +308,9 @@ class Main(QWidget,MainUi):
             f2.start()
             #fp.start()
         except Exception as exc :
-            self.txt_warnings.setText(exc)
+            self.txt_warnings.setText(str(exc))
+            browser.close()
+            self.thread_excel(directory)
     def show_ref(self,text):
         try:
             f3 = threading.Thread(target=self.label.setText(text), args=(),daemon=True)
@@ -309,15 +333,18 @@ class Main(QWidget,MainUi):
         if msg.clickedButton() == buttonYes:
             pass
     def process_excel(self,FileName):
+        wb.close()
         subprocess.run(FileName,shell=True)
     def thread_excel(self,directory):
         try :
+
             #f5=threading.Thread(target=self.label.setText("Process Finished !"))
             f4=threading.Thread(target=self.process_excel(directory),args=(),daemon=True)
             f4.start()
             #f4.start()
         except Exception as exc:
-            self.txt_warnings.setText(exc)
+            self.txt_warnings.setText(str(exc))
+
 def main():
     app=QApplication(sys.argv)
     window=Main()
